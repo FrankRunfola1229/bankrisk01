@@ -212,8 +212,8 @@ Storage account → **Access Control (IAM)** → **Add role assignment**
 
 This lets Databricks write to ADLS using the service principal creds stored in Key Vault.
 ---
-
 <br>
+
 # Step 5 — Create Azure Data Factory (ADF)
 Azure Portal:
 1. Search **Data factories** → **Create**
