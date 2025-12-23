@@ -276,13 +276,8 @@ Name it: `LS_ADLS_bankrisk01`
 6. Test connection → Create
 
 
-## 6C) Linked Service: Azure Databricks
-1. Linked services → New
-2. Choose **Azure Databricks DeltaLake**
-3. Workspace: your `adb-bankrisk01`
-4. Authentication:
-   - Use a personal access token and store it in Key Vault (best practice)
-    Step 1) In Azure Databricks:
+## 6C) Linked Service: Azure Databricks (best practice)
+  1. In Azure Databricks:
      - Open your Databricks workspace
      - Click your user icon/name (top bar) → Settings
      - Developer
@@ -291,43 +286,46 @@ Name it: `LS_ADLS_bankrisk01`
      - Add a comment like: bankrisk01-adf-linkedservice
      - Set lifetime (pick something sane; banks rotate these)
      - Copy the token value immediately (you won’t see it again)
-   Step 2) Store the PAT in Azure Key Vault as a secret
+       
+  2. Store the PAT in Azure Key Vault as a secret
      - In Key Vault:
      - Secrets → Generate/Import
      - Name: adb-pat
      - Value: paste the PAT
      - Create
-     - If you get “operation not allowed by RBAC”, you need a Key Vault data-plane role
-        like Key Vault Secrets Officer (to create/update secrets). “Key Vault Contributor” often cannot create secrets.
-    Step 3 — Give ADF Managed Identity permission to read that secret
-      3A) Turn on ADF System Assigned Managed Identity
-      ADF → Manage → Managed identities:
-       - System assigned: On → Sav
-      3B) Assign Key Vault read permissions to ADF identity (RBAC model)
-       - Key Vault → Access Control (IAM) → Add role assignment:
-       - Role: Key Vault Secrets User
-       - Members: select your Data Factory managed identity (adf-bankrisk01)
-       - This role lets ADF Get/List secrets (read-only), which is exactly what you want.
-   Step 4 — Create a Key Vault Linked Service in ADF
-   In ADF Studio:
-     - Manage → Linked services → New
-     - Choose Azure Key Vault
-     - Authentication method: Managed identity
-     - Select your vault
-     - test connection → Create
-   Name it something like: LS_KV_bankrisk01
-   Step 5 — Create the Azure Databricks Linked Service in ADF using the Key Vault secret
-   In ADF Studio:
-     - Manage → Linked services → New
-     - Choose Azure Databricks
-     - Fill in the normal fields:
-       -   Databricks workspace URL (looks like https://adb-<id>.<region>.azuredatabricks.net)
-       -   Choose cluster / interactive / job cluster config as you prefer
-     - Authentication type: Access token
-     - For the Access token value:
-       - choose Azure Key Vault (or “Use secret” / “Key Vault reference” depending on UI)
-       - select Key Vault linked service: LS_KV_bankrisk01
-       - Select secret name: adb-pat
+     - If you get “operation not allowed by RBAC”, you need a Key Vault data-plane role like Key Vault Secrets Officer (to create/update secrets). “Key Vault Contributor” often cannot create secrets.
+       
+   3. Give ADF Managed Identity permission to read that secret
+     1. Turn on ADF System Assigned Managed Identity
+        - ADF → Manage → Managed identities:
+        - System assigned: On → Sav
+     2. Assign Key Vault read permissions to ADF identity (RBAC model)
+        - Key Vault → Access Control (IAM) → Add role assignment:
+        - Role: Key Vault Secrets User
+        - Members: select your Data Factory managed identity (adf-bankrisk01)
+        - This role lets ADF Get/List secrets (read-only), which is exactly what you want.
+   
+   4. Create a Key Vault Linked Service in ADF
+      - In ADF Studio
+      - Manage → Linked services → New
+      - Choose Azure Key Vault
+      - Authentication method: Managed identity
+      - Select your vault
+      - test connection → Create
+      - Name it something like: LS_KV_bankrisk01
+
+   5. Create the Azure Databricks Linked Service in ADF using the Key Vault secret
+      - In ADF Studio:
+      - Manage → Linked services → New
+      - Choose Azure Databricks
+      - Fill in the normal fields:
+         - Databricks workspace URL (looks like https://adb-<id>.<region>.azuredatabricks.net)
+         - Choose cluster / interactive / job cluster config as you prefer
+      - Authentication type: Access token
+      - For the Access token value:
+        - choose Azure Key Vault (or “Use secret” / “Key Vault reference” depending on UI)
+        - select Key Vault linked service: LS_KV_bankrisk01
+        - Select secret name: adb-pat
 
 
 ---
