@@ -157,50 +157,55 @@ We will create a service principal (app registration) and store:
 - `tenant-id`
 - `storage-account-name`
 
-### Create a service principal (Microsoft Entra ID)
+### Create Service principal (Microsoft Entra ID)
 Azure Portal:
 1. Search **Microsoft Entra ID**
 2. Go to **App registrations** → **New registration**
 3. Name: `sp-bankrisk01`
 4. Register
 
-Now:
-1. Go to the app → **Overview**
+### Create New Client Secret
+1. Still under Microsoft Entra ID, Go to the app → **Overview**
    - Copy **Application (client) ID** → store it for Key Vault
    - Copy **Directory (tenant) ID** → store it for Key Vault
-2. Go to **Certificates & secrets**
+2. Go to Manage → **Certificates & secrets**
    - **New client secret**
    - Copy the *value* immediately (you won’t see it again)
 
+### Add Role assignment
+ - Go to Key Vault 'kv-bankrisk01' → Access Control (IAM) → Add → Add role assignmen
+ - Role: **Key Vault Administrator**
+ - Members: User, group, or service principal
+ - Click 'Review and Assign'
+   
 ### Put those values into Key Vault secrets
-Key Vault → **Secrets** → **Generate/Import**
+Key Vault 'kv-bankrisk01' → **Objects**  → **Secrets** → **Generate/Import**
 
 Create:
 - Name: `sp-client-id` → Value: (client id)
 - Name: `sp-client-secret` → Value: (client secret value)
-- Name: `tenant-id` → Value: (tenant id)
-- Name: `storage-account-name` → Value: `stbankrisk01<unique>`
+- Name: `tenant-id` → Value: (tenant id)  ---- DON'T SEE THIS OPTION
+- Name: `storage-account-name` → Value: `stbankrisk01<unique>`  ---- DON'T SEE THIS OPTION
 
 ---
 
 # Step 4 — RBAC permissions (don’t skip this)
+
+## 4A) Enable ADF Managed Identity
+ADF → **Manage** (toolbox icon) → **Managed identities**
+- System assigned: **ON**
+- Save
+
 We need secure access between services:
 
-## 4A) Grant the service principal access to ADLS
+## 4B) Grant the service principal access to ADLS
 Storage account → **Access Control (IAM)** → **Add role assignment**
 - Role: **Storage Blob Data Contributor**
-- Assign access to: User, group, or service principal
+- Members: User, group, or service principal
 - Select: `sp-bankrisk01`
 - Save
 
 This lets Databricks write to ADLS using the service principal creds stored in Key Vault.
-
-## 4B) Create ADF and grant it access
-You’ll create ADF next, then:
-- Give ADF Managed Identity **Storage Blob Data Contributor** on the storage account
-- Give ADF Managed Identity **Key Vault Secrets User** on the Key Vault
-
----
 
 # Step 5 — Create Azure Data Factory (ADF)
 Azure Portal:
@@ -208,26 +213,38 @@ Azure Portal:
 2. Resource group: `rg-bankrisk01`
 3. Name: `adf-bankrisk01`
 4. Region: same
-5. Create
+5. Create Create
 
-## Enable ADF Managed Identity
-ADF → **Manage** (toolbox icon) → **Managed identities**
-- System assigned: **ON**
-- Save
-
-Now go set RBAC:
-
-### ADF → Storage role
-Storage account → **IAM** → Add role assignment:
-- Role: **Storage Blob Data Contributor**
-- Member: `adf-bankrisk01` (managed identity)
-- Save
-
-### ADF → Key Vault role
-Key Vault → **IAM** → Add role assignment:
-- Role: **Key Vault Secrets User**
-- Member: `adf-bankrisk01` (managed identity)
-- Save
+  
+## Step 5a) Give ADF permission to **WRITE** to ADLS Gen2 (**Storage Blob Data Contributor**)
+   - Go to your Storage account (the ADLS Gen2 one)
+   - Left menu → Access Control (IAM)
+   - Click Add → Add role assignment
+   - Role tab: **Storage Blob Data Contributor**
+   - Members tab:
+     - “Assign access to” = Managed identity
+     - Select members
+        - Managed identity type = Data Factory
+        - Pick your factory: adf-bankrisk01
+   - Review + assign
+   - What you should see after:
+     - In Storage account → IAM → Role assignments:
+       - adf-bankrisk01 (Managed Identity) → Storage Blob Data Contributor
+       
+## Step 5b) Give ADF permission to **READ** secrets from Key Vault (**Key Vault Secrets User**)
+   - Go to your Storage account (the ADLS Gen2 one)
+   - Left menu → Access Control (IAM)
+   - Click Add → Add role assignment
+   - Role tab: **Key Vault Secrets User**
+   - Members tab:
+     - “Assign access to” = Managed identity
+     - Select members
+        - Managed identity type = Data Factory
+        - Pick your factory: adf-bankrisk01
+   - Review + assign
+   - What you should see after:
+     - In Storage account → IAM → Role assignments:
+       - adf-bankrisk01 (Managed Identity) → Key Vault Secrets User
 
 ---
 
