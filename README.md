@@ -52,7 +52,6 @@ Query files in ADLS directly with `OPENROWSET`
 - **Azure Data Factory (ADF)**: orchestration + ingestion + notebook triggering
 - **Azure Databricks (ADB)**: transformation, Delta/Parquet outputs
 - **Azure Synapse Analytics (Serverless SQL)**: query over files (pay-per-query)
-
 ---
 
 # Cost control (do this or you’ll waste money)
@@ -60,7 +59,6 @@ Query files in ADLS directly with `OPENROWSET`
 - Synapse: **Serverless SQL only** (avoid dedicated pools)
 - ADF triggers: run daily or manual while learning
 - Storage: keep only a small time window in raw (e.g., last 30–90 days)
-
 ---
 
 # Dataset (simple “bank risk” framing)
@@ -69,7 +67,6 @@ We use **Treasury yield curve rates** as a basic market-risk indicator:
 - Track daily changes and rolling stats (optional)
 
 This is “bank risk” without complicated models.
-
 ---
 
 # Naming (keep it consistent)
@@ -81,8 +78,8 @@ Use these names (adjust to make globally unique where required):
 - Data Factory: `adf-bankrisk01`
 - Databricks workspace: `adb-bankrisk01`
 - Synapse workspace: `syn-bankrisk01<unique>`
-
 ---
+
 
 # Step 0 — Prereqs
 You need:
@@ -93,8 +90,10 @@ You need:
 Recommended local tools (optional):
 - Azure CLI
 - VS Code
-
 ---
+
+<br>
+
 
 # Step 1 — Create Resource Group
 Azure Portal:
@@ -103,8 +102,10 @@ Azure Portal:
 3. Name: `rg-bankrisk01`
 4. Region: pick one and stick with it (same region for everything)
 5. Create
-
 ---
+
+<br>
+
 
 # Step 2 — Create ADLS Gen2 (Storage Account with HNS)
 Azure Portal:
@@ -133,8 +134,10 @@ You don’t need to pre-create folders, but here is the target layout:
 - `raw/treasury_yield_curve/dt=YYYY-MM-DD/`
 - `curated/treasury_yield_curve/`
 - `analytics/bankrisk_indicators/`
-
 ---
+
+<br>
+
 
 # Step 3 — Create Key Vault (and secrets)
 Azure Portal:
@@ -186,8 +189,10 @@ Create:
 - Name: `sp-client-secret` → Value: (client secret value)
 - Name: `tenant-id` → Value: (tenant id)  ---- DON'T SEE THIS OPTION
 - Name: `storage-account-name` → Value: `stbankrisk01<unique>`  ---- DON'T SEE THIS OPTION
-
 ---
+
+<br>
+
 
 # Step 4 — RBAC permissions (don’t skip this)
 
@@ -206,7 +211,9 @@ Storage account → **Access Control (IAM)** → **Add role assignment**
 - Save
 
 This lets Databricks write to ADLS using the service principal creds stored in Key Vault.
+---
 
+<br>
 # Step 5 — Create Azure Data Factory (ADF)
 Azure Portal:
 1. Search **Data factories** → **Create**
@@ -245,8 +252,8 @@ Azure Portal:
    - What you should see after:
      - In Storage account → IAM → Role assignments:
        - adf-bankrisk01 (Managed Identity) → Key Vault Secrets User
-
 ---
+<br>
 
 # Step 6 — ADF Linked Services
 Open ADF Studio (Launch Studio).
@@ -263,28 +270,68 @@ Name it: `LS_ADLS_bankrisk01`
 ## 6B) Linked Service: HTTP (Treasury Fiscal Data API)
 1. Linked services → New
 2. Choose **HTTP**
-3. Base URL: `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/`
-4. Anonymous authentication
-5. Test connection → Create
+3. Name: `LS_HTTP_TreasuryFiscalData`
+4. Base URL: `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/`
+5. Authentication type: `Anonymous authentication`
+6. Test connection → Create
 
-Name it: `LS_HTTP_TreasuryFiscalData`
 
 ## 6C) Linked Service: Azure Databricks
 1. Linked services → New
-2. Choose **Azure Databricks**
+2. Choose **Azure Databricks DeltaLake**
 3. Workspace: your `adb-bankrisk01`
 4. Authentication:
-   - Use **Managed Identity** if your org allows it cleanly
-   - Otherwise use a PAT (personal access token) and store it in Key Vault (best practice)
+   - Use a personal access token and store it in Key Vault (best practice)
+    Step 1) In Azure Databricks:
+     - Open your Databricks workspace
+     - Click your user icon/name (top bar) → Settings
+     - Developer
+     - Next to Access tokens → Manage
+     - Generate new token
+     - Add a comment like: bankrisk01-adf-linkedservice
+     - Set lifetime (pick something sane; banks rotate these)
+     - Copy the token value immediately (you won’t see it again)
+   Step 2) Store the PAT in Azure Key Vault as a secret
+     - In Key Vault:
+     - Secrets → Generate/Import
+     - Name: adb-pat
+     - Value: paste the PAT
+     - Create
+     - If you get “operation not allowed by RBAC”, you need a Key Vault data-plane role
+        like Key Vault Secrets Officer (to create/update secrets). “Key Vault Contributor” often cannot create secrets.
+    Step 3 — Give ADF Managed Identity permission to read that secret
+      3A) Turn on ADF System Assigned Managed Identity
+      ADF → Manage → Managed identities:
+       - System assigned: On → Sav
+      3B) Assign Key Vault read permissions to ADF identity (RBAC model)
+       - Key Vault → Access Control (IAM) → Add role assignment:
+       - Role: Key Vault Secrets User
+       - Members: select your Data Factory managed identity (adf-bankrisk01)
+       - This role lets ADF Get/List secrets (read-only), which is exactly what you want.
+   Step 4 — Create a Key Vault Linked Service in ADF
+   In ADF Studio:
+     - Manage → Linked services → New
+     - Choose Azure Key Vault
+     - Authentication method: Managed identity
+     - Select your vault
+     - test connection → Create
+   Name it something like: LS_KV_bankrisk01
+   Step 5 — Create the Azure Databricks Linked Service in ADF using the Key Vault secret
+   In ADF Studio:
+     - Manage → Linked services → New
+     - Choose Azure Databricks
+     - Fill in the normal fields:
+       -   Databricks workspace URL (looks like https://adb-<id>.<region>.azuredatabricks.net)
+       -   Choose cluster / interactive / job cluster config as you prefer
+     - Authentication type: Access token
+     - For the Access token value:
+       - choose Azure Key Vault (or “Use secret” / “Key Vault reference” depending on UI)
+       - select Key Vault linked service: LS_KV_bankrisk01
+       - Select secret name: adb-pat
 
-To keep this project moving, easiest path:
-- Create a Databricks PAT in the Databricks workspace
-- Store it in Key Vault as secret `adb-pat`
-- In ADF Linked Service, reference Key Vault secret
-
-Name it: `LS_ADB_bankrisk01`
 
 ---
+<br>
 
 # Step 7 — ADF Pipeline (Ingest + Trigger Databricks)
 Create pipeline: `PL_bankrisk01_ingest_and_transform`
@@ -326,6 +373,7 @@ Create ADLS dataset:
 
 If ADF UI doesn’t allow full expression directly in the dataset path, set the dataset to a base folder and use dynamic content in the Copy activity sink path.
 
+
 ## 7C) Activity 2 — Databricks Notebook
 Add **Databricks Notebook** activity: `NB_Transform_TreasuryYieldCurve`
 
@@ -337,8 +385,8 @@ Add **Databricks Notebook** activity: `NB_Transform_TreasuryYieldCurve`
 ## 7D) Trigger
 While learning: start with **Manual trigger**.
 Later: add a daily schedule trigger.
-
 ---
+<br>
 
 # Step 8 — Create Azure Databricks
 Azure Portal:
@@ -354,8 +402,10 @@ Databricks workspace → **Compute** → **Create compute**
 - Node type: smallest available
 - Auto-terminate: **10–15 minutes**
 - Runtime: latest LTS is fine
-
 ---
+
+<br>
+
 
 # Step 9 — Databricks Secrets (Key Vault-backed)
 We want zero secrets in notebooks.
@@ -370,8 +420,10 @@ Databricks workspace:
 
 Once created, Databricks can read Key Vault secrets via:
 `dbutils.secrets.get(scope="kv-bankrisk01-scope", key="sp-client-id")`
-
 ---
+
+<br>
+
 
 # Step 10 — Databricks Notebook Code (Python)
 Create a notebook in Databricks:
